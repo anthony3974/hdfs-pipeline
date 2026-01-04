@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+import json, os, time, glob, shutil
+from datetime import datetime, timedelta
+
+RAW_DIR = "/var/data/cpu"
+OUT_DIR = "/var/www/html/data/cpu-hourly"
+RETENTION_HOURS = 48  # delete raw files older than 48 hours
+
+os.makedirs(OUT_DIR, exist_ok=True)
+
+# Get all raw CPU log files
+files = sorted(glob.glob(f"{RAW_DIR}/*.json"))
+
+if not files:
+    print("No CPU data to aggregate.")
+    exit(0)
+
+# Load all entries
+entries = []
+for f in files:
+    try:
+        with open(f, "r") as fp:
+            entries.append(json.load(fp))
+    except:
+        continue
+
+# Determine output filename based on the past hour
+now = datetime.utcnow()
+hour_bucket = now.replace(minute=0, second=0, microsecond=0)
+out_name = hour_bucket.strftime("%Y-%m-%d-%H") + ".json"
+out_path = os.path.join(OUT_DIR, out_name)
+
+# Save aggregated data
+with open(out_path, "w") as fp:
+    json.dump(entries, fp)
+
+print(f"Saved hourly aggregate → {out_path}")
+
+# Delete raw files after aggregation
+for f in files:
+    os.remove(f)
+
+print("Raw CPU logs cleared.")
+
+# Optional: delete old hourly archives after retention
+for f in glob.glob(f"{OUT_DIR}/*.json"):
+    ts = os.path.basename(f).replace(".json", "")
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%d-%H")
+        if dt < now - timedelta(hours=RETENTION_HOURS):
+            os.remove(f)
+            print("Deleted old hourly archive:", f)
+    except:
+        pass
